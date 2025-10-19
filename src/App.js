@@ -13,7 +13,7 @@ import AdminDashboard from "./routes/AdminDashboard";
 import Navbar from "./components/Navbar";
 import { jwtDecode } from "jwt-decode";
 
-import { ThemeProvider, CssBaseline, CircularProgress, Box, Typography } from '@mui/material';
+import { ThemeProvider, CssBaseline, CircularProgress, Box } from '@mui/material';
 import theme from './theme';
 
 const API_URL = process.env.REACT_APP_API_URL;
@@ -21,7 +21,8 @@ const API_URL = process.env.REACT_APP_API_URL;
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userRole, setUserRole] = useState(null);
-  const [isLoading, setIsLoading] = useState(true); // <-- ADDED LOADING STATE
+  const [currentUser, setCurrentUser] = useState(null); // <-- ADDED
+  const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
 
   const handleLogout = useCallback(() => {
@@ -29,6 +30,7 @@ function App() {
     localStorage.removeItem("refresh_token");
     setIsLoggedIn(false);
     setUserRole(null);
+    setCurrentUser(null); // <-- ADDED
     navigate("/login");
   }, [navigate]);
 
@@ -36,19 +38,18 @@ function App() {
     const checkAuthStatus = async () => {
       const token = localStorage.getItem("token");
       if (!token) {
-        setIsLoggedIn(false);
-        setUserRole(null);
-        setIsLoading(false); // Done loading, not logged in
+        setIsLoading(false);
         return;
       }
 
       try {
         const decodedToken = jwtDecode(token);
         const currentTime = Date.now() / 1000;
+        let activeToken = token;
+        let newDecodedToken = decodedToken;
 
         if (decodedToken.exp < currentTime) {
           console.warn("Token expired, attempting refresh...");
-          
           const refresh_token = localStorage.getItem("refresh_token");
           if (!refresh_token) {
             handleLogout();
@@ -57,39 +58,45 @@ function App() {
 
           const response = await fetch(`${API_URL}/refresh`, {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${refresh_token}`,
-            },
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${refresh_token}` },
           });
 
           const data = await response.json();
           if (response.ok) {
             localStorage.setItem("token", data.access_token);
-            const decoded = jwtDecode(data.access_token);
-            setUserRole(decoded.role || null);
-            setIsLoggedIn(true);
+            activeToken = data.access_token; // Use the new token for the profile fetch
+            newDecodedToken = jwtDecode(activeToken);
           } else {
             handleLogout();
+            return; // Exit if refresh fails
           }
-
-        } else {
-          setIsLoggedIn(true);
-          setUserRole(decodedToken.role || null);
         }
+        
+        // If we have a valid token (original or refreshed), set auth state and fetch user
+        setIsLoggedIn(true);
+        setUserRole(newDecodedToken.role || null);
+        
+        const userId = newDecodedToken.sub; // 'sub' is the standard JWT claim for user ID
+        const userProfileResponse = await fetch(`${API_URL}/users/${userId}`, {
+          headers: { Authorization: `Bearer ${activeToken}` },
+        });
+
+        if (userProfileResponse.ok) {
+          const userData = await userProfileResponse.json();
+          setCurrentUser(userData);
+        }
+
       } catch (error) {
-        console.error("Invalid token:", error);
+        console.error("Auth check failed:", error);
         handleLogout();
       } finally {
-        // CRUCIAL: Set loading to false after all checks are complete
         setIsLoading(false);
       }
     };
 
     checkAuthStatus();
-  }, [handleLogout]); // handleLogout is memoized with useCallback
+  }, [handleLogout]);
 
-  // While checking auth, show a loading screen
   if (isLoading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
@@ -98,11 +105,10 @@ function App() {
     );
   }
 
-  // Once loading is complete, render the app
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Navbar isLoggedIn={isLoggedIn} handleLogout={handleLogout} userRole={userRole} />
+      <Navbar isLoggedIn={isLoggedIn} handleLogout={handleLogout} userRole={userRole} currentUser={currentUser} />
       <Routes>
         <Route path="/login" element={<Login setIsLoggedIn={setIsLoggedIn} />} />
         <Route path="/register" element={<Register />} />

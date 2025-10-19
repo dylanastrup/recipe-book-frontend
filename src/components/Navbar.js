@@ -9,7 +9,17 @@ import Avatar from '@mui/material/Avatar';
 import Tooltip from '@mui/material/Tooltip';
 import { useNavigate } from 'react-router-dom';
 
-const Navbar = ({ isLoggedIn, handleLogout, userRole }) => {
+// Helper function to get initials from a username
+const getInitials = (name = '') => {
+  if (!name) return '?';
+  const nameParts = name.trim().split(' ');
+  if (nameParts.length > 1) {
+    return `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}`.toUpperCase();
+  }
+  return name[0].toUpperCase();
+};
+
+const Navbar = ({ isLoggedIn, handleLogout, userRole, currentUser }) => {
   const navigate = useNavigate();
   const isAdmin = userRole === 'admin';
 
@@ -31,7 +41,6 @@ const Navbar = ({ isLoggedIn, handleLogout, userRole }) => {
               <Button color="inherit" onClick={() => navigate('/recipes')}>Recipes</Button>
               <Button color="inherit" onClick={() => navigate('/create-recipe')}>Create</Button>
 
-
               {isAdmin && (
                 <Button color="inherit" onClick={() => navigate('/admin')}>
                   Admin Panel
@@ -40,10 +49,10 @@ const Navbar = ({ isLoggedIn, handleLogout, userRole }) => {
 
               <Button color="inherit" onClick={handleLogout}>Logout</Button>
 
-              <Tooltip title={isAdmin ? "Admin User" : "User Profile"}>
+              <Tooltip title={isAdmin ? `Admin: ${currentUser?.username}` : `Profile: ${currentUser?.username}`}>
                 <IconButton onClick={() => navigate('/profile')} sx={{ ml: 2 }}>
                   <Avatar sx={{ bgcolor: isAdmin ? '#FF7043' : '#D28415' }}>
-                    A
+                    {currentUser ? getInitials(currentUser.username) : '?'}
                   </Avatar>
                 </IconButton>
               </Tooltip>
