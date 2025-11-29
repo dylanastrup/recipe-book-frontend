@@ -12,16 +12,17 @@ import ResetPassword from "./routes/ResetPassword";
 import AdminDashboard from "./routes/AdminDashboard";
 import Navbar from "./components/Navbar";
 import { jwtDecode } from "jwt-decode";
-
+import Favorites from "./routes/Favorites";
 import { ThemeProvider, CssBaseline, CircularProgress, Box } from '@mui/material';
 import theme from './theme';
+import axios from "axios";
 
 const API_URL = process.env.REACT_APP_API_URL;
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userRole, setUserRole] = useState(null);
-  const [currentUser, setCurrentUser] = useState(null); // <-- ADDED
+  const [currentUser, setCurrentUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
 
@@ -30,7 +31,7 @@ function App() {
     localStorage.removeItem("refresh_token");
     setIsLoggedIn(false);
     setUserRole(null);
-    setCurrentUser(null); // <-- ADDED
+    setCurrentUser(null);
     navigate("/login");
   }, [navigate]);
 
@@ -49,42 +50,27 @@ function App() {
         let newDecodedToken = decodedToken;
 
         if (decodedToken.exp < currentTime) {
-          console.warn("Token expired, attempting refresh...");
           const refresh_token = localStorage.getItem("refresh_token");
-          if (!refresh_token) {
-            handleLogout();
-            return;
-          }
+          if (!refresh_token) { handleLogout(); return; }
 
-          const response = await fetch(`${API_URL}/refresh`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${refresh_token}` },
+          const response = await axios.post(`${API_URL}/refresh`, {}, {
+            headers: { Authorization: `Bearer ${refresh_token}` },
           });
 
-          const data = await response.json();
-          if (response.ok) {
-            localStorage.setItem("token", data.access_token);
-            activeToken = data.access_token; // Use the new token for the profile fetch
-            newDecodedToken = jwtDecode(activeToken);
-          } else {
-            handleLogout();
-            return; // Exit if refresh fails
-          }
+          localStorage.setItem("token", response.data.access_token);
+          activeToken = response.data.access_token;
+          newDecodedToken = jwtDecode(activeToken);
         }
         
-        // If we have a valid token (original or refreshed), set auth state and fetch user
         setIsLoggedIn(true);
         setUserRole(newDecodedToken.role || null);
         
-        const userId = newDecodedToken.sub; // 'sub' is the standard JWT claim for user ID
-        const userProfileResponse = await fetch(`${API_URL}/users/${userId}`, {
+        const userId = newDecodedToken.sub;
+        const userProfileResponse = await axios.get(`${API_URL}/users/${userId}`, {
           headers: { Authorization: `Bearer ${activeToken}` },
         });
-
-        if (userProfileResponse.ok) {
-          const userData = await userProfileResponse.json();
-          setCurrentUser(userData);
-        }
+        
+        setCurrentUser(userProfileResponse.data);
 
       } catch (error) {
         console.error("Auth check failed:", error);
@@ -114,20 +100,21 @@ function App() {
         <Route path="/register" element={<Register />} />
         <Route path="/recipes" element={isLoggedIn ? <Recipes /> : <Navigate to="/login" />} />
         <Route path="/profile" element={isLoggedIn ? <Profile /> : <Navigate to="/login" />} />
+        <Route path="/favorites" element={isLoggedIn ? <Favorites /> : <Navigate to="/login" />} />
         <Route path="/recipes/:id" element={isLoggedIn ? <RecipeDetail /> : <Navigate to="/login" />} />
         <Route path="/create-recipe" element={isLoggedIn ? <CreateRecipe /> : <Navigate to="/login" />} />
         <Route path="/edit-recipe/:id" element={isLoggedIn ? <EditRecipe /> : <Navigate to="/login" />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password/:token" element={<ResetPassword />} />
-        <Route path="/admin" element={
-          isLoggedIn && userRole === "admin" ? (
-            <AdminDashboard />
-          ) : isLoggedIn ? (
-            <Navigate to="/recipes" />
-          ) : (
-            <Navigate to="/login" />
-          )
-        } />
+        <Route 
+          path="/admin" 
+          element={
+            isLoggedIn && userRole === "admin" 
+              ? <AdminDashboard /> 
+              : <Navigate to="/login" />
+          } 
+        />
+        {/* THIS IS THE CORRECTED LINE */}
         <Route path="/" element={isLoggedIn ? <Navigate to="/recipes" /> : <Navigate to="/login" />} />
       </Routes>
     </ThemeProvider>

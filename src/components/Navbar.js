@@ -40,6 +40,7 @@ const Navbar = ({ isLoggedIn, handleLogout, userRole, currentUser }) => {
             <>
               <Button color="inherit" onClick={() => navigate('/recipes')}>Recipes</Button>
               <Button color="inherit" onClick={() => navigate('/create-recipe')}>Create</Button>
+              <Button color="inherit" onClick={() => navigate('/favorites')}>Favorites</Button>
 
               {isAdmin && (
                 <Button color="inherit" onClick={() => navigate('/admin')}>

@@ -2,68 +2,75 @@ import React from 'react';
 import { Card, CardContent, Typography, Box, Button, Stack } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { jwtDecode } from 'jwt-decode';
+import FavoriteButton from './FavoriteButton';
 
 const RecipeCard = ({ recipe }) => {
   const navigate = useNavigate();
   const defaultImage = "/no-image.png";
 
+  if (!recipe) {
+    return null;
+  }
+
   const imageToShow = (recipe.images && recipe.images.length > 0) ? recipe.images[0] : defaultImage;
 
-  // 🧠 Get current user info from token
   let isOwnerOrAdmin = false;
   try {
     const token = localStorage.getItem("token");
     if (token) {
       const decoded = jwtDecode(token);
-      console.log("🔍 Decoded token in RecipeCard:", decoded);
-      console.log("📦 Recipe.user_id:", recipe.user_id);
-
-      const currentUserId = parseInt(decoded.id);
+      const currentUserId = parseInt(decoded.sub);
       const isAdmin = decoded.role === "admin";
       const isOwner = currentUserId === recipe.user_id;
-
-      console.log("🧾 currentUserId:", currentUserId, "isAdmin:", isAdmin, "isOwner:", isOwner);
-
       isOwnerOrAdmin = isAdmin || isOwner;
     }
   } catch (err) {
-    console.error("🚫 Invalid token:", err);
+    // Non-critical error
   }
 
   const handleEdit = (e) => {
-    e.stopPropagation();  // Prevent card click
+    e.stopPropagation();
     navigate(`/edit-recipe/${recipe.id}`);
   };
 
   const handleDelete = (e) => {
-    e.stopPropagation();  // Prevent card click
+    e.stopPropagation();
     const confirmDelete = window.confirm("Are you sure you want to delete this recipe?");
     if (confirmDelete) {
-      navigate(`/delete-recipe/${recipe.id}`);
+      console.log(`Deleting recipe ${recipe.id}`);
+      // Add API call to delete here
     }
   };
 
-  console.log("📦 Rendering RecipeCard for:", recipe.recipe_name);
-  
   return (
     <Card 
       onClick={() => navigate(`/recipes/${recipe.id}`)}
       sx={{ 
+        width: '100%',
+        // ----- THE CHANGE IS HERE -----
+        maxWidth: 300, // Changed from 345 to 300
+        // ------------------------------
+        margin: 'auto', // Keeps it centered
+        display: 'flex',
+        flexDirection: 'column',
+        position: 'relative',
         borderRadius: 3, 
         boxShadow: 3, 
-        width: 250, 
         cursor: 'pointer',
         transition: "transform 0.2s, box-shadow 0.2s",
         '&:hover': { 
           transform: "scale(1.02)", 
           boxShadow: 6 
         },
-        display: 'flex',
-        flexDirection: 'column',
-        position: 'relative'
       }}
     >
-      {/* Image */}
+      <Box sx={{ position: 'absolute', top: 8, right: 8, zIndex: 1, backgroundColor: 'rgba(255, 255, 255, 0.7)', borderRadius: '50%' }}>
+        <FavoriteButton
+          recipeId={recipe.id}
+          isInitiallyFavorited={recipe.is_favorited}
+        />
+      </Box>
+
       <Box
         component="img"
         src={imageToShow}
@@ -78,8 +85,7 @@ const RecipeCard = ({ recipe }) => {
         }}
       />
       
-      {/* Content */}
-      <CardContent sx={{ flexGrow: 1 }}>
+      <CardContent sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
         <Typography variant="h6" sx={{ fontFamily: "'Patrick Hand', cursive" }}>
           {recipe.recipe_name}
         </Typography>
@@ -87,35 +93,24 @@ const RecipeCard = ({ recipe }) => {
           variant="body2" 
           color="text.secondary"
           sx={{ 
-            maxHeight: 40,     
-            overflow: 'hidden' 
+            height: 40,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
           }}
         >
-          {recipe.description.length > 60 
-            ? recipe.description.substring(0, 60) + "..." 
-            : recipe.description}
+          {recipe.description}
         </Typography>
+        <Box sx={{ flexGrow: 1 }} />
         <Typography variant="body2" sx={{ marginTop: 1 }}>
           <strong>Total Time:</strong> {recipe.prep_time + recipe.cook_time} mins
         </Typography>
 
-        {/* Admin/Owner Buttons */}
         {isOwnerOrAdmin && (
           <Stack direction="row" spacing={1} sx={{ marginTop: 2 }}>
-            <Button 
-              variant="outlined" 
-              color="primary" 
-              size="small" 
-              onClick={handleEdit}
-            >
+            <Button variant="outlined" size="small" onClick={handleEdit}>
               Edit
             </Button>
-            <Button 
-              variant="outlined" 
-              color="error" 
-              size="small" 
-              onClick={handleDelete}
-            >
+            <Button variant="outlined" color="error" size="small" onClick={handleDelete}>
               Delete
             </Button>
           </Stack>

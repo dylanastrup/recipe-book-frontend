@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
-import { jwtDecode } from "jwt-decode";
 import {
   Container,
   Grid,
@@ -12,51 +11,30 @@ import {
   FormControl,
   Button,
   Typography,
-  Alert
+  Alert,
+  Box,
+  CircularProgress
 } from "@mui/material";
-
-// ✅ Import your RecipeCard component
 import RecipeCard from "../components/RecipeCard";
 
 const API_URL = process.env.REACT_APP_API_URL;
 
 const Recipes = () => {
   const [recipes, setRecipes] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState("");
   const navigate = useNavigate();
 
-  const checkAuth = useCallback(() => {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      navigate("/login");
-      return false;
-    }
-
-    try {
-      const decodedToken = jwtDecode(token);
-      const currentTime = Date.now() / 1000;
-
-      if (decodedToken.exp < currentTime) {
-        localStorage.removeItem("token");
-        localStorage.removeItem("refresh_token");
-        navigate("/login");
-        return false;
-      }
-
-      return true;
-    } catch (error) {
-      localStorage.removeItem("token");
-      localStorage.removeItem("refresh_token");
-      navigate("/login");
-      return false;
-    }
-  }, [navigate]);
-
   const fetchRecipes = useCallback(async (query = "", sort = "") => {
+    setIsLoading(true);
     try {
       const token = localStorage.getItem("token");
+      if (!token) {
+        navigate("/login");
+        return;
+      }
       const response = await axios.get(
         `${API_URL}/recipes?search=${query}&sort=${sort}`,
         { headers: { Authorization: `Bearer ${token}` } }
@@ -64,13 +42,14 @@ const Recipes = () => {
       setRecipes(response.data);
     } catch (err) {
       setError("Failed to fetch recipes.");
+    } finally {
+      setIsLoading(false);
     }
-  }, []);
+  }, [navigate]);
 
   useEffect(() => {
-    if (!checkAuth()) return;
     fetchRecipes();
-  }, [checkAuth, fetchRecipes]);
+  }, [fetchRecipes]);
 
   const handleSearchChange = (e) => setSearchQuery(e.target.value);
   const handleSearchSubmit = (e) => {
@@ -99,13 +78,13 @@ const Recipes = () => {
         <FormControl sx={{ minWidth: 220, marginRight: 2, marginBottom: { xs: 2, sm: 0 } }}>
           <InputLabel>Sort by</InputLabel>
           <Select value={sortBy} label="Sort by" onChange={handleSortChange}>
-            <MenuItem value="">None</MenuItem>
-            <MenuItem value="recipe_name_asc">Recipe Name (A-Z)</MenuItem>
-            <MenuItem value="recipe_name_desc">Recipe Name (Z-A)</MenuItem>
+            <MenuItem value="">Default</MenuItem>
+            <MenuItem value="recipe_name_asc">Name (A-Z)</MenuItem>
+            <MenuItem value="recipe_name_desc">Name (Z-A)</MenuItem>
             <MenuItem value="cuisine_asc">Cuisine (A-Z)</MenuItem>
             <MenuItem value="cuisine_desc">Cuisine (Z-A)</MenuItem>
-            <MenuItem value="total_time_asc">Total Time (Shortest → Longest)</MenuItem>
-            <MenuItem value="total_time_desc">Total Time (Longest → Shortest)</MenuItem>
+            <MenuItem value="total_time_asc">Time (Short-Long)</MenuItem>
+            <MenuItem value="total_time_desc">Time (Long-Short)</MenuItem>
             <MenuItem value="difficulty_asc">Difficulty (Easy → Hard)</MenuItem>
             <MenuItem value="difficulty_desc">Difficulty (Hard → Easy)</MenuItem>
             <MenuItem value="servings_asc">Servings (Fewest First)</MenuItem>
@@ -124,14 +103,18 @@ const Recipes = () => {
         </Button>
       </form>
 
-      {error && <Alert severity="error">{error}</Alert>}
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-      {recipes.length === 0 ? (
-        <Typography>No recipes found.</Typography>
+      {isLoading ? (
+        <Box display="flex" justifyContent="center" mt={4}>
+          <CircularProgress />
+        </Box>
       ) : (
-        <Grid container spacing={3}>
-          {recipes.map((recipe) => (
-            <Grid item xs={12} sm={6} md={4} key={recipe.id}>
+        // --- CHANGE IS HERE ---
+        // Changed spacing from 3 to 2 to bring cards closer
+        <Grid container spacing={2}>
+          {recipes && recipes.map((recipe, index) => (
+            <Grid size={{ xs: 12, sm: 6, md: 4 }} key={recipe?.id || index} sx={{ display: 'flex', justifyContent: 'center' }}>
               <RecipeCard recipe={recipe} />
             </Grid>
           ))}
