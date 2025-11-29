@@ -1,5 +1,3 @@
-// routes/AdminDashboard.js
-
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -22,17 +20,30 @@ const API_URL = process.env.REACT_APP_API_URL;
 
 const AdminDashboard = () => {
   const [users, setUsers] = useState([]);
+  // 1. State to store the ID of the currently logged-in admin
+  const [currentAdminId, setCurrentAdminId] = useState(null);
   const navigate = useNavigate();
 
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (!token) return navigate('/login');
 
-    const decoded = jwtDecode(token);
-    if (decoded.role !== 'admin') return navigate('/recipes'); // block non-admins
+    try {
+      const decoded = jwtDecode(token);
+      
+      // Security check: redirect if not admin
+      if (decoded.role !== 'admin') return navigate('/recipes');
 
-    fetchUsers(token);
-  }, []);
+      // 2. Save your own ID so we can prevent you from deleting yourself
+      // 'sub' is the standard JWT claim where Flask stores the User ID
+      setCurrentAdminId(parseInt(decoded.sub));
+
+      fetchUsers(token);
+    } catch (error) {
+      console.error("Invalid token", error);
+      navigate('/login');
+    }
+  }, [navigate]);
 
   const fetchUsers = async (token) => {
     try {
@@ -41,7 +52,7 @@ const AdminDashboard = () => {
       });
       const data = await res.json();
   
-      // 🔽 Filter out the '[deleted]' user
+      // Filter out the system '[deleted]' user so it doesn't clutter the list
       const filtered = data.filter((user) => user.username !== '[deleted]');
       setUsers(filtered);
     } catch (err) {
@@ -79,7 +90,7 @@ const AdminDashboard = () => {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
-        await fetchUsers(token); // ✅ refresh full user list from backend
+        fetchUsers(token); // Refresh list
       }
     } catch (err) {
       console.error('Failed to delete user:', err);
@@ -88,58 +99,62 @@ const AdminDashboard = () => {
 
   return (
     <Container>
-      <Typography variant="h4" gutterBottom>
+      <Typography variant="h4" gutterBottom sx={{ mt: 4 }}>
         Admin Dashboard
       </Typography>
       <Paper elevation={3}>
         <Box p={2}>
           <Table>
-          <TableHead>
-  <TableRow>
-    <TableCell>ID</TableCell>
-    <TableCell>Username</TableCell>
-    <TableCell>Email</TableCell>
-    <TableCell>Role</TableCell>
-    <TableCell>Joined</TableCell>
-    <TableCell>Recipes</TableCell>
-    <TableCell>Actions</TableCell>
-  </TableRow>
-</TableHead>
-<TableBody>
-  {users.map((user) => (
-    <TableRow key={user.id}>
-      <TableCell>{user.id}</TableCell>
-      <TableCell>{user.username}</TableCell>
-      <TableCell>{user.email}</TableCell>
-      <TableCell>
-        <Select
-          value={user.role}
-          onChange={(e) => handleRoleChange(user.id, e.target.value)}
-          disabled={user.id === 5}
-        >
-          <MenuItem value="user">user</MenuItem>
-          <MenuItem value="admin">admin</MenuItem>
-        </Select>
-      </TableCell>
-      <TableCell>
-        {user.created_at
-          ? new Date(user.created_at).toLocaleDateString()
-          : '—'}
-      </TableCell>
-      <TableCell>{user.recipe_count}</TableCell>
-      <TableCell>
-        <Button
-          variant="outlined"
-          color="error"
-          onClick={() => handleDelete(user.id)}
-          disabled={user.id === 5}
-        >
-          Delete
-        </Button>
-      </TableCell>
-    </TableRow>
-  ))}
-</TableBody>
+            <TableHead>
+              <TableRow>
+                <TableCell>ID</TableCell>
+                <TableCell>Username</TableCell>
+                <TableCell>Email</TableCell>
+                <TableCell>Role</TableCell>
+                <TableCell>Joined</TableCell>
+                <TableCell>Recipes</TableCell>
+                <TableCell>Actions</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {users.map((user) => (
+                <TableRow key={user.id}>
+                  <TableCell>{user.id}</TableCell>
+                  <TableCell>{user.username}</TableCell>
+                  <TableCell>{user.email}</TableCell>
+                  <TableCell>
+                    <Select
+                      value={user.role || 'user'}
+                      onChange={(e) => handleRoleChange(user.id, e.target.value)}
+                      size="small"
+                      // 3. Only disable if this row is YOU
+                      disabled={user.id === currentAdminId}
+                    >
+                      <MenuItem value="user">user</MenuItem>
+                      <MenuItem value="admin">admin</MenuItem>
+                    </Select>
+                  </TableCell>
+                  <TableCell>
+                    {user.created_at
+                      ? new Date(user.created_at).toLocaleDateString()
+                      : '—'}
+                  </TableCell>
+                  <TableCell>{user.recipe_count}</TableCell>
+                  <TableCell>
+                    <Button
+                      variant="outlined"
+                      color="error"
+                      size="small"
+                      onClick={() => handleDelete(user.id)}
+                      // 4. Only disable if this row is YOU
+                      disabled={user.id === currentAdminId}
+                    >
+                      Delete
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
           </Table>
         </Box>
       </Paper>
