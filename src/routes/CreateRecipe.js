@@ -16,9 +16,56 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 
 const API_URL = process.env.REACT_APP_API_URL;
+
+// List for the dropdown
 const measurementOptions = ["tsp", "tbsp", "fl oz", "cup", "pint", "quart", "gallon", "ml", "l", "oz", "lb", "gram", "kg", "pinch", "dash"];
 
-// Component for a single, sortable step
+// Map for exact matches
+const UNIT_MAPPINGS = {
+    "tablespoon": "tbsp", "tablespoons": "tbsp", "tbsp": "tbsp", "t": "tbsp", "T": "tbsp",
+    "teaspoon": "tsp", "teaspoons": "tsp", "tsp": "tsp",
+    "cup": "cup", "cups": "cup", "c": "cup",
+    "ounce": "oz", "ounces": "oz", "oz": "oz",
+    "fluid ounce": "fl oz", "fluid ounces": "fl oz", "fl oz": "fl oz",
+    "pound": "lb", "pounds": "lb", "lb": "lb", "lbs": "lb",
+    "gram": "g", "grams": "g", "g": "g",
+    "kilogram": "kg", "kilograms": "kg", "kg": "kg",
+    "liter": "l", "liters": "l", "l": "l",
+    "milliliter": "ml", "milliliters": "ml", "ml": "ml",
+    "quart": "qt", "quarts": "qt", "qt": "qt",
+    "pint": "pt", "pints": "pt", "pt": "pt",
+    "gallon": "gal", "gallons": "gal", "gal": "gal",
+    "pinch": "pinch", "pinches": "pinch",
+    "clove": "clove", "cloves": "clove",
+    "slice": "slice", "slices": "slice",
+    "can": "can", "cans": "can"
+};
+
+// --- NEW: Levenshtein Distance Algorithm for Fuzzy Matching ---
+// Calculates the number of edits needed to turn 'a' into 'b'
+const levenshtein = (a, b) => {
+    const matrix = [];
+    for (let i = 0; i <= b.length; i++) {
+        matrix[i] = [i];
+    }
+    for (let j = 0; j <= a.length; j++) {
+        matrix[0][j] = j;
+    }
+    for (let i = 1; i <= b.length; i++) {
+        for (let j = 1; j <= a.length; j++) {
+            if (b.charAt(i - 1) === a.charAt(j - 1)) {
+                matrix[i][j] = matrix[i - 1][j - 1];
+            } else {
+                matrix[i][j] = Math.min(
+                    matrix[i - 1][j - 1] + 1,
+                    Math.min(matrix[i][j - 1] + 1, matrix[i - 1][j] + 1)
+                );
+            }
+        }
+    }
+    return matrix[b.length][a.length];
+};
+
 const SortableStep = ({ step, index, handleStepChange, deleteStep }) => {
   const {
     attributes,
@@ -112,6 +159,42 @@ const CreateRecipe = () => {
     setRecipeData({ ...recipeData, ingredients: updatedIngredients });
   };
 
+  // --- UPDATED: handleUnitBlur with Fuzzy Matching ---
+  const handleUnitBlur = (index, value) => {
+    if (!value) return;
+    const normalizedInput = value.toLowerCase().trim();
+
+    // 1. Check for exact match in our map
+    if (UNIT_MAPPINGS[normalizedInput]) {
+        if (UNIT_MAPPINGS[normalizedInput] !== value) {
+            handleIngredientChange(index, "measurement_name", UNIT_MAPPINGS[normalizedInput]);
+        }
+        return;
+    }
+
+    // 2. If no exact match, try fuzzy matching against keys in the map
+    const potentialMatches = Object.keys(UNIT_MAPPINGS);
+    let bestMatch = null;
+    let lowestDistance = Infinity;
+
+    for (const key of potentialMatches) {
+        const dist = levenshtein(normalizedInput, key);
+        
+        // Allow a small margin of error (e.g., 2 typos)
+        // We also ensure the word isn't too short to avoid false positives on short units
+        if (dist < lowestDistance && dist <= 2 && key.length > 2) {
+            lowestDistance = dist;
+            bestMatch = key;
+        }
+    }
+
+    if (bestMatch) {
+        // If we found a close match (e.g., "tableespoon"), map it to the standard unit ("tbsp")
+        const standardUnit = UNIT_MAPPINGS[bestMatch];
+        handleIngredientChange(index, "measurement_name", standardUnit);
+    }
+  };
+
   const handleStepChange = (index, value) => {
     setIsDirty(true);
     const updatedSteps = [...recipeData.steps];
@@ -187,7 +270,7 @@ const CreateRecipe = () => {
     try {
       const response = await axios.post(`${API_URL}/recipes`, submissionData, { headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` } });
       if (response.status === 201) {
-        setIsDirty(false); // Important: Reset dirty state after successful submission
+        setIsDirty(false); 
         navigate("/recipes");
       }
     } catch (err) {
@@ -245,11 +328,22 @@ const CreateRecipe = () => {
           {recipeData.ingredients.map((ing, index) => (
             <Box key={index} sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
               <TextField label="Amount" value={ing.amount} onChange={(e) => handleIngredientChange(index, "amount", e.target.value)} sx={{ width: '20%' }} />
+              {/* UPDATED UNIT SELECTION WITH ONBLUR FUZZY MATCHING */}
               <Autocomplete
+                freeSolo
                 options={measurementOptions}
                 value={ing.measurement_name}
                 onChange={(event, newValue) => { handleIngredientChange(index, "measurement_name", newValue || ""); }}
-                renderInput={(params) => <TextField {...params} label="Unit" />}
+                onInputChange={(event, newInputValue) => { handleIngredientChange(index, "measurement_name", newInputValue); }}
+                
+                renderInput={(params) => (
+                    <TextField 
+                        {...params} 
+                        label="Unit" 
+                        // We attach the fuzzy match check to onBlur
+                        onBlur={(e) => handleUnitBlur(index, e.target.value)}
+                    />
+                )}
                 sx={{ width: '30%' }}
               />
               <TextField label="Ingredient Name" value={ing.ingredient_name} onChange={(e) => handleIngredientChange(index, "ingredient_name", e.target.value)} required fullWidth />
