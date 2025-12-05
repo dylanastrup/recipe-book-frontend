@@ -1,6 +1,16 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import { 
+  Container, 
+  Paper, 
+  Typography, 
+  TextField, 
+  Button, 
+  Box, 
+  Alert, 
+  Grid 
+} from "@mui/material";
 
 const API_URL = process.env.REACT_APP_API_URL;
 
@@ -9,10 +19,12 @@ const Login = ({ setIsLoggedIn }) => {
   const [password, setPassword] = useState("");
   const navigate = useNavigate();
   const [error, setError] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setError(null);
+    setIsLoading(true);
 
     try {
       const response = await axios.post(
@@ -36,43 +48,87 @@ const Login = ({ setIsLoggedIn }) => {
       setIsLoggedIn(true);
       navigate("/recipes");
     } catch (err) {
-      setError(err.response?.data?.error || "Login failed");
+      setError(err.response?.data?.error || "Login failed. Please check your credentials.");
       console.error("Login Error:", err);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  // ✅ Navigate to forgot-password page
-  const handleForgotPassword = () => {
-    navigate("/forgot-password");
-  };
-
   return (
-    <div>
-      <h2>Login</h2>
-      {error && <p style={{ color: "red" }}>{error}</p>}
-      <form onSubmit={handleLogin}>
-        <input
-          type="text"
-          placeholder="Username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          required
-        />
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
-        <button type="submit">Login</button>
-      </form>
+    <Container maxWidth="xs">
+      <Paper elevation={3} sx={{ p: 4, mt: 8, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <Typography component="h1" variant="h4" gutterBottom>
+          Login
+        </Typography>
 
-      {/* ✅ Add forgot password button */}
-      <button onClick={handleForgotPassword} style={{ marginTop: "10px" }}>
-        Forgot Password?
-      </button>
-    </div>
+        {error && (
+          <Alert severity="error" sx={{ width: '100%', mb: 2 }}>
+            {error}
+          </Alert>
+        )}
+
+        <Box component="form" onSubmit={handleLogin} sx={{ mt: 1, width: '100%' }}>
+          <TextField
+            margin="normal"
+            required
+            fullWidth
+            id="username"
+            label="Username"
+            name="username"
+            autoComplete="username"
+            autoFocus
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+          />
+          <TextField
+            margin="normal"
+            required
+            fullWidth
+            name="password"
+            label="Password"
+            type="password"
+            id="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+          
+          <Button
+            type="submit"
+            fullWidth
+            variant="contained"
+            sx={{ mt: 3, mb: 2 }}
+            disabled={isLoading}
+          >
+            {isLoading ? "Signing In..." : "Sign In"}
+          </Button>
+          
+          <Grid container>
+            <Grid item xs>
+              <Button 
+                variant="text" 
+                size="small" 
+                onClick={() => navigate("/forgot-password")}
+                sx={{ textTransform: 'none' }}
+              >
+                Forgot password?
+              </Button>
+            </Grid>
+            <Grid item>
+              <Button 
+                variant="text" 
+                size="small" 
+                onClick={() => navigate("/register")}
+                sx={{ textTransform: 'none' }}
+              >
+                Don't have an account? Sign Up
+              </Button>
+            </Grid>
+          </Grid>
+        </Box>
+      </Paper>
+    </Container>
   );
 };
 
