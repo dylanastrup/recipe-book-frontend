@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
-import { jwtDecode } from "jwt-decode";
 
-// Dnd-kit imports for drag and drop
+// Dnd-kit imports
 import { DndContext, closestCenter } from "@dnd-kit/core";
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -16,11 +15,8 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 
 const API_URL = process.env.REACT_APP_API_URL;
-
-// List for the dropdown
 const measurementOptions = ["tsp", "tbsp", "fl oz", "cup", "pint", "quart", "gallon", "ml", "l", "oz", "lb", "gram", "kg", "pinch", "dash"];
 
-// Map for exact matches (Front-end Normalization)
 const UNIT_MAPPINGS = {
     "tablespoon": "tbsp", "tablespoons": "tbsp", "tbsp": "tbsp", "t": "tbsp", "T": "tbsp",
     "teaspoon": "tsp", "teaspoons": "tsp", "tsp": "tsp", "t": "tsp",
@@ -41,33 +37,40 @@ const UNIT_MAPPINGS = {
     "can": "can", "cans": "can"
 };
 
-// Levenshtein Distance Algorithm for Fuzzy Matching
 const levenshtein = (a, b) => {
     const matrix = [];
-    for (let i = 0; i <= b.length; i++) { matrix[i] = [i]; }
-    for (let j = 0; j <= a.length; j++) { matrix[0][j] = j; }
+    for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+    for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
     for (let i = 1; i <= b.length; i++) {
         for (let j = 1; j <= a.length; j++) {
-            if (b.charAt(i - 1) === a.charAt(j - 1)) {
-                matrix[i][j] = matrix[i - 1][j - 1];
-            } else {
-                matrix[i][j] = Math.min(matrix[i - 1][j - 1] + 1, Math.min(matrix[i][j - 1] + 1, matrix[i - 1][j] + 1));
-            }
+            if (b.charAt(i - 1) === a.charAt(j - 1)) matrix[i][j] = matrix[i - 1][j - 1];
+            else matrix[i][j] = Math.min(matrix[i - 1][j - 1] + 1, Math.min(matrix[i][j - 1] + 1, matrix[i - 1][j] + 1));
         }
     }
     return matrix[b.length][a.length];
 };
 
-// Sortable Step Component
 const SortableStep = ({ step, index, handleStepChange, deleteStep }) => {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: step.id });
   const style = { transform: CSS.Transform.toString(transform), transition };
+
   return (
     <Box ref={setNodeRef} style={style} sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, mb: 2 }}>
-      <Box sx={{ pt: 1.5, cursor: 'grab' }} {...attributes} {...listeners}><DragIndicatorIcon /></Box>
+      <Box sx={{ pt: 1.5, cursor: 'grab' }} {...attributes} {...listeners}>
+        <DragIndicatorIcon />
+      </Box>
       <Typography sx={{ pt: 2 }}>{index + 1}.</Typography>
-      <TextField label={`Step ${index + 1}`} value={step.instruction} onChange={(e) => handleStepChange(index, e.target.value)} required fullWidth multiline />
-      <IconButton onClick={() => deleteStep(index)} color="error" sx={{ mt: 1 }}><DeleteIcon /></IconButton>
+      <TextField
+        label={`Step ${index + 1}`}
+        value={step.instruction}
+        onChange={(e) => handleStepChange(index, e.target.value)}
+        required
+        fullWidth
+        multiline
+      />
+      <IconButton onClick={() => deleteStep(index)} color="error" sx={{ mt: 1 }}>
+        <DeleteIcon />
+      </IconButton>
     </Box>
   );
 };
@@ -77,7 +80,7 @@ const EditRecipe = () => {
   const navigate = useNavigate();
   const token = localStorage.getItem("token");
 
-  const [recipeData, setRecipeData] = useState(null);
+  const [recipeData, setRecipeData] = useState(null); // Null initially for loading state
   const [existingTags, setExistingTags] = useState([]);
   
   const [isDirty, setIsDirty] = useState(false);
@@ -85,14 +88,16 @@ const EditRecipe = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
-  // --- 1. Fetch Initial Data (Recipe + Tags) ---
+  // --- 1. Fetch Initial Data ---
   useEffect(() => {
     const fetchInitialData = async () => {
         if (!token) { navigate('/login'); return; }
         try {
+            // Fetch Tags
             const tagsResponse = await axios.get(`${API_URL}/tags`, { headers: { Authorization: `Bearer ${token}` } });
             setExistingTags(tagsResponse.data);
 
+            // Fetch Recipe
             const recipeResponse = await axios.get(`${API_URL}/recipes/${id}`, { headers: { Authorization: `Bearer ${token}` } });
             
             setRecipeData({
@@ -103,13 +108,13 @@ const EditRecipe = () => {
                 cook_time: recipeResponse.data.cook_time || "",
                 servings: recipeResponse.data.servings || "",
                 difficulty: recipeResponse.data.difficulty || "Easy",
-                // Map ingredients to match form structure
+                // Map ingredients
                 ingredients: recipeResponse.data.ingredients.map(ing => ({
                     ingredient_name: ing.ingredient_name,
                     amount: ing.amount,
                     measurement_name: ing.measurement_unit || "",
                 })),
-                // Give steps unique IDs for drag-and-drop
+                // Map steps and assign unique IDs for Drag-and-Drop
                 steps: recipeResponse.data.steps.map(step => ({
                     ...step,
                     id: Date.now() + Math.random(), 
@@ -135,7 +140,7 @@ const EditRecipe = () => {
     return () => { window.removeEventListener('beforeunload', handleBeforeUnload); };
   }, [isDirty]);
 
-  // --- 3. Handlers ---
+  // --- 3. Handlers (Identical to CreateRecipe) ---
   const handleChange = (e) => {
     setIsDirty(true);
     setRecipeData({ ...recipeData, [e.target.name]: e.target.value });
@@ -153,19 +158,13 @@ const EditRecipe = () => {
     setRecipeData({ ...recipeData, ingredients: updatedIngredients });
   };
 
-  // Fuzzy Matching logic for units
   const handleUnitBlur = (index, value) => {
     if (!value) return;
     const normalizedInput = value.toLowerCase().trim();
-
-    // Exact match check
     if (UNIT_MAPPINGS[normalizedInput]) {
-        if (UNIT_MAPPINGS[normalizedInput] !== value) {
-            handleIngredientChange(index, "measurement_name", UNIT_MAPPINGS[normalizedInput]);
-        }
+        if (UNIT_MAPPINGS[normalizedInput] !== value) handleIngredientChange(index, "measurement_name", UNIT_MAPPINGS[normalizedInput]);
         return;
     }
-    // Fuzzy match check
     const potentialMatches = Object.keys(UNIT_MAPPINGS);
     let bestMatch = null;
     let lowestDistance = Infinity;
@@ -176,9 +175,7 @@ const EditRecipe = () => {
             bestMatch = key;
         }
     }
-    if (bestMatch) {
-        handleIngredientChange(index, "measurement_name", UNIT_MAPPINGS[bestMatch]);
-    }
+    if (bestMatch) handleIngredientChange(index, "measurement_name", UNIT_MAPPINGS[bestMatch]);
   };
 
   const handleStepChange = (index, value) => {
@@ -241,17 +238,21 @@ const EditRecipe = () => {
     }
   };
 
+  // --- 4. Submit Handler (PUT Request) ---
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setIsSubmitting(true);
     setError(null);
+    setIsSubmitting(true);
     
+    // Filter empty images
     const submissionData = { ...recipeData, images: recipeData.images.filter(img => img.trim() !== "") };
 
     try {
-      await axios.put(`${API_URL}/recipes/${id}`, submissionData, { headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` } });
-      setIsDirty(false);
-      navigate(`/recipes/${id}`);
+      const response = await axios.put(`${API_URL}/recipes/${id}`, submissionData, { headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` } });
+      if (response.status === 200) {
+        setIsDirty(false); 
+        navigate(`/recipes/${id}`); // Go back to details page
+      }
     } catch (err) {
       setError("Failed to update recipe. Please check all fields.");
     } finally {
@@ -259,21 +260,22 @@ const EditRecipe = () => {
     }
   };
 
-  // Loading State
   if (isLoading) {
     return <Box display="flex" justifyContent="center" alignItems="center" minHeight="80vh"><CircularProgress /></Box>;
   }
 
-  // Error State
-  if (error || !recipeData) {
-    return <Container maxWidth="sm"><Alert severity="error" sx={{ mt: 4 }}>{error || "Recipe not found"}</Alert><Button onClick={() => navigate('/recipes')} sx={{mt: 2}}>Back to Recipes</Button></Container>;
+  if (error) {
+      return <Container maxWidth="sm"><Alert severity="error" sx={{ mt: 4 }}>{error}</Alert><Button onClick={() => navigate('/recipes')} sx={{mt: 2}}>Back to Recipes</Button></Container>;
   }
 
   return (
     <Container maxWidth="md">
       <Paper elevation={3} sx={{ p: 4, mt: 4, mb: 4 }}>
-        <Typography variant="h4" component="h1" gutterBottom align="center">Edit Recipe</Typography>
+        <Typography variant="h4" component="h1" gutterBottom align="center">
+          Edit Recipe
+        </Typography>
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+        
         <Box component="form" onSubmit={handleSubmit} noValidate>
           <Grid container spacing={3}>
             <Grid item xs={12}><TextField name="recipe_name" label="Recipe Name" value={recipeData.recipe_name} onChange={handleChange} fullWidth required /></Grid>
@@ -296,40 +298,24 @@ const EditRecipe = () => {
           
           <Typography variant="h6" sx={{ mt: 4, mb: 2 }}>Tags</Typography>
           <Autocomplete
-              multiple
-              freeSolo
-              options={existingTags}
-              value={recipeData.tags}
-              onChange={handleTagsChange}
-              renderTags={(value, getTagProps) =>
-                  value.map((option, index) => (
-                      <Chip variant="outlined" label={option} {...getTagProps({ index })} />
-                  ))
-              }
-              renderInput={(params) => (
-                  <TextField {...params} variant="outlined" label="Tags" placeholder="e.g., Dinner, Quick, Vegetarian" />
-              )}
+              multiple freeSolo options={existingTags} value={recipeData.tags} onChange={handleTagsChange}
+              renderTags={(value, getTagProps) => value.map((option, index) => (<Chip variant="outlined" label={option} {...getTagProps({ index })} />))}
+              renderInput={(params) => (<TextField {...params} variant="outlined" label="Tags" placeholder="e.g., Dinner, Quick, Vegetarian" />)}
           />
 
           <Typography variant="h6" sx={{ mt: 4, mb: 2 }}>Ingredients</Typography>
           {recipeData.ingredients.map((ing, index) => (
             <Box key={index} sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
               <TextField label="Amount" value={ing.amount} onChange={(e) => handleIngredientChange(index, "amount", e.target.value)} sx={{ width: '20%' }} />
+              
               <Autocomplete
-                freeSolo
-                options={measurementOptions}
-                value={ing.measurement_name}
+                freeSolo options={measurementOptions} value={ing.measurement_name}
                 onChange={(event, newValue) => { handleIngredientChange(index, "measurement_name", newValue || ""); }}
                 onInputChange={(event, newInputValue) => { handleIngredientChange(index, "measurement_name", newInputValue); }}
-                renderInput={(params) => (
-                    <TextField 
-                        {...params} 
-                        label="Unit" 
-                        onBlur={(e) => handleUnitBlur(index, e.target.value)}
-                    />
-                )}
+                renderInput={(params) => (<TextField {...params} label="Unit" onBlur={(e) => handleUnitBlur(index, e.target.value)} />)}
                 sx={{ width: '30%' }}
               />
+              
               <TextField label="Ingredient Name" value={ing.ingredient_name} onChange={(e) => handleIngredientChange(index, "ingredient_name", e.target.value)} required fullWidth />
               <IconButton onClick={() => deleteIngredient(index)} color="error"><DeleteIcon /></IconButton>
             </Box>

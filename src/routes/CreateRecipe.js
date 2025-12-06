@@ -16,14 +16,11 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import LinkIcon from '@mui/icons-material/Link';
 import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
-import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh'; // Icon for AI
+import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh'; 
 
 const API_URL = process.env.REACT_APP_API_URL;
-
-// List for the dropdown
 const measurementOptions = ["tsp", "tbsp", "fl oz", "cup", "pint", "quart", "gallon", "ml", "l", "oz", "lb", "gram", "kg", "pinch", "dash"];
 
-// Map for exact matches
 const UNIT_MAPPINGS = {
     "tablespoon": "tbsp", "tablespoons": "tbsp", "tbsp": "tbsp", "t": "tbsp", "T": "tbsp",
     "teaspoon": "tsp", "teaspoons": "tsp", "tsp": "tsp", "t": "tsp",
@@ -44,7 +41,6 @@ const UNIT_MAPPINGS = {
     "can": "can", "cans": "can"
 };
 
-// Levenshtein Distance Algorithm for Fuzzy Matching
 const levenshtein = (a, b) => {
     const matrix = [];
     for (let i = 0; i <= b.length; i++) matrix[i] = [i];
@@ -58,14 +54,66 @@ const levenshtein = (a, b) => {
     return matrix[b.length][a.length];
 };
 
+// --- HELPER: Parse Fractions to Decimals ---
+const parseFraction = (value) => {
+    if (!value) return "";
+    // If it's already a number or a simple string number
+    if (!isNaN(value)) return value;
+
+    const strVal = String(value).trim();
+    
+    try {
+        // Handle mixed fractions "1 1/2" or "1-1/2"
+        const parts = strVal.replace('-', ' ').split(' ');
+        let total = 0;
+        
+        for (let part of parts) {
+            if (part.includes('/')) {
+                const [num, den] = part.split('/');
+                if (parseFloat(den) !== 0) {
+                    total += parseFloat(num) / parseFloat(den);
+                }
+            } else if (!isNaN(part) && part !== "") {
+                total += parseFloat(part);
+            }
+        }
+        return total > 0 ? parseFloat(total.toFixed(3)) : strVal; // Limit decimals
+    } catch (e) {
+        return strVal;
+    }
+};
+
+// --- HELPER: Standardize Unit Logic (Extracted for reuse) ---
+const getStandardizedUnit = (inputUnit) => {
+    if (!inputUnit) return "";
+    const normalizedInput = inputUnit.toLowerCase().trim();
+
+    // Exact match
+    if (UNIT_MAPPINGS[normalizedInput]) {
+        return UNIT_MAPPINGS[normalizedInput];
+    }
+
+    // Fuzzy match
+    const potentialMatches = Object.keys(UNIT_MAPPINGS);
+    let bestMatch = null;
+    let lowestDistance = Infinity;
+    for (const key of potentialMatches) {
+        const dist = levenshtein(normalizedInput, key);
+        if (dist < lowestDistance && dist <= 2 && key.length > 2) {
+            lowestDistance = dist;
+            bestMatch = key;
+        }
+    }
+    
+    return bestMatch ? UNIT_MAPPINGS[bestMatch] : inputUnit;
+};
+
 const SortableStep = ({ step, index, handleStepChange, deleteStep, error }) => {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: step.id });
   const style = { transform: CSS.Transform.toString(transform), transition };
   return (
     <Box ref={setNodeRef} style={style} sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, mb: 2 }}>
-      <Box sx={{ pt: 1.5, cursor: 'grab' }} {...attributes} {...listeners}>
-        <DragIndicatorIcon />
-      </Box>
+      <Box sx={{ pt: 1.5, cursor: 'grab' }} {...attributes} {...listeners}><DragIndicatorIcon /></Box>
       <Typography sx={{ pt: 2 }}>{index + 1}.</Typography>
       <TextField
         label={`Step ${index + 1}`}
@@ -94,10 +142,7 @@ const CreateRecipe = () => {
   
   const [importUrl, setImportUrl] = useState("");
   const [isImporting, setIsImporting] = useState(false);
-  
-  // --- AI Image Upload State ---
   const [uploadingImage, setUploadingImage] = useState(false);
-  // -----------------------------
 
   const [existingTags, setExistingTags] = useState([]);
   const [isDirty, setIsDirty] = useState(false);
@@ -157,25 +202,22 @@ const CreateRecipe = () => {
     }
   };
 
+  // --- Handlers for Blur Events (Standardization) ---
+
   const handleUnitBlur = (index, value) => {
-    if (!value) return;
-    const normalizedInput = value.toLowerCase().trim();
-    if (UNIT_MAPPINGS[normalizedInput]) {
-        if (UNIT_MAPPINGS[normalizedInput] !== value) handleIngredientChange(index, "measurement_name", UNIT_MAPPINGS[normalizedInput]);
-        return;
+    const standardized = getStandardizedUnit(value);
+    if (standardized && standardized !== value) {
+        handleIngredientChange(index, "measurement_name", standardized);
     }
-    const potentialMatches = Object.keys(UNIT_MAPPINGS);
-    let bestMatch = null;
-    let lowestDistance = Infinity;
-    for (const key of potentialMatches) {
-        const dist = levenshtein(normalizedInput, key);
-        if (dist < lowestDistance && dist <= 2 && key.length > 2) {
-            lowestDistance = dist;
-            bestMatch = key;
-        }
-    }
-    if (bestMatch) handleIngredientChange(index, "measurement_name", UNIT_MAPPINGS[bestMatch]);
   };
+
+  // Automatically convert "1/2" to "0.5" when user leaves the Amount box
+  const handleAmountBlur = (index, value) => {
+      const parsed = parseFraction(value);
+      if (parsed !== value) {
+          handleIngredientChange(index, "amount", parsed);
+      }
+  }
 
   const handleStepChange = (index, value) => {
     setIsDirty(true);
@@ -244,7 +286,17 @@ const CreateRecipe = () => {
     }
   };
 
-  // --- NEW: AI Image Handler ---
+  // --- CLEAN DATA HELPER FOR IMPORTS ---
+  const processImportedIngredients = (ingredients) => {
+      return ingredients.map(ing => ({
+          ingredient_name: ing.ingredient_name,
+          // 1. Convert "1/2" -> 0.5 immediately
+          amount: parseFraction(ing.amount),
+          // 2. Standardize "Tablespoon" -> "tbsp" immediately
+          measurement_name: getStandardizedUnit(ing.measurement_name) || ""
+      }));
+  };
+
   const handleImageUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -258,13 +310,12 @@ const CreateRecipe = () => {
     
     try {
         const response = await axios.post(`${API_URL}/analyze-recipe-image`, formData, {
-             headers: { 
-                 Authorization: `Bearer ${token}`,
-                 'Content-Type': 'multipart/form-data' 
-             }
+             headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' }
         });
         
         const aiData = response.data;
+        const cleanIngredients = processImportedIngredients(aiData.ingredients || []);
+
         setRecipeData(prev => ({
             ...prev,
             recipe_name: aiData.recipe_name || prev.recipe_name,
@@ -273,25 +324,19 @@ const CreateRecipe = () => {
             cook_time: aiData.cook_time || prev.cook_time,
             servings: aiData.servings || prev.servings,
             steps: aiData.steps ? aiData.steps.map((s, i) => ({ ...s, id: Date.now() + i })) : prev.steps,
-            ingredients: aiData.ingredients || prev.ingredients
+            ingredients: cleanIngredients // Use cleaned ingredients
         }));
         setIsDirty(true);
     } catch (err) {
-        console.error(err);
-        
-        // --- NEW: Check for 429 Status ---
         if (err.response && err.response.status === 429) {
             setError("⏳ usage limit reached. Please wait 1 minute before scanning again.");
         } else {
             setError("Could not analyze image. Please try again.");
         }
-        // ---------------------------------
-        
     } finally {
         setUploadingImage(false);
     }
   };
-  // ----------------------------
 
   const handleImport = async () => {
     if (!importUrl) return;
@@ -303,6 +348,9 @@ const CreateRecipe = () => {
             headers: { Authorization: `Bearer ${token}` }
         });
         const imported = response.data;
+        
+        const cleanIngredients = processImportedIngredients(imported.ingredients || []);
+
         setRecipeData({
             ...recipeData,
             recipe_name: imported.recipe_name || "",
@@ -311,7 +359,7 @@ const CreateRecipe = () => {
             cook_time: imported.cook_time || "",
             servings: imported.servings || "",
             steps: imported.steps.map((s, i) => ({ ...s, id: Date.now() + i })) || [{ id: Date.now(), step_number: 1, instruction: "" }],
-            ingredients: imported.ingredients || [{ ingredient_name: "", amount: "", measurement_name: "" }],
+            ingredients: cleanIngredients, // Use cleaned ingredients
             images: imported.images.length > 0 ? imported.images : [""]
         });
         setIsDirty(true);
@@ -391,7 +439,6 @@ const CreateRecipe = () => {
         <Box sx={{ mb: 4, p: 2, bgcolor: '#f5f5f5', borderRadius: 2 }}>
             <Typography variant="subtitle2" gutterBottom>Auto-Import Tools</Typography>
             <Grid container spacing={2} alignItems="center">
-                {/* 1. URL Import */}
                 <Grid item xs={12} md={8}>
                     <Box sx={{ display: 'flex', gap: 1 }}>
                         <TextField 
@@ -409,7 +456,6 @@ const CreateRecipe = () => {
                 
                 <Grid item xs={12} md={1} sx={{ textAlign: 'center' }}><Typography variant="caption">OR</Typography></Grid>
                 
-                {/* 2. AI Image Upload */}
                 <Grid item xs={12} md={3}>
                     <Button
                         component="label"
@@ -462,6 +508,8 @@ const CreateRecipe = () => {
               <TextField 
                 label="Amount" value={ing.amount} onChange={(e) => handleIngredientChange(index, "amount", e.target.value)} sx={{ width: '20%' }} 
                 error={!!validationErrors[`ingredients[${index}].amount`]}
+                // ADDED ONBLUR FOR FRACTION CONVERSION
+                onBlur={(e) => handleAmountBlur(index, e.target.value)}
               />
               <Autocomplete
                 freeSolo options={measurementOptions} value={ing.measurement_name}

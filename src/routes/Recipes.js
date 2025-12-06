@@ -9,12 +9,16 @@ import {
   MenuItem,
   InputLabel,
   FormControl,
-  Button,
   Typography,
   Alert,
   Box,
-  CircularProgress
+  CircularProgress,
+  Autocomplete,
+  Chip,
+  InputAdornment,
+  Pagination // <-- New Import
 } from "@mui/material";
+import SearchIcon from '@mui/icons-material/Search';
 import RecipeCard from "../components/RecipeCard";
 
 const API_URL = process.env.REACT_APP_API_URL;
@@ -23,23 +27,37 @@ const Recipes = () => {
   const [recipes, setRecipes] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  
+  // Search & Filter States
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState("");
+  const [selectedTags, setSelectedTags] = useState([]); 
+  const [availableTags, setAvailableTags] = useState([]); 
+
+  // Pagination States
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+
   const navigate = useNavigate();
 
-  const fetchRecipes = useCallback(async (query = "", sort = "") => {
+  // 1. Fetch Logic
+  const fetchRecipes = useCallback(async (query, sort, tags, pageNum) => {
     setIsLoading(true);
     try {
       const token = localStorage.getItem("token");
-      if (!token) {
-        navigate("/login");
-        return;
-      }
+      if (!token) { navigate("/login"); return; }
+      
+      const tagsParam = tags.join(',');
+
       const response = await axios.get(
-        `${API_URL}/recipes?search=${query}&sort=${sort}`,
+        `${API_URL}/recipes?search=${query}&sort=${sort}&tags=${tagsParam}&page=${pageNum}`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      setRecipes(response.data);
+      
+      // Update state with the new response structure
+      setRecipes(response.data.recipes);
+      setTotalPages(response.data.total_pages);
+
     } catch (err) {
       setError("Failed to fetch recipes.");
     } finally {
@@ -47,18 +65,52 @@ const Recipes = () => {
     }
   }, [navigate]);
 
+  // 2. Load Tags on Mount
   useEffect(() => {
-    fetchRecipes();
-  }, [fetchRecipes]);
+    const token = localStorage.getItem("token");
+    if (!token) { navigate("/login"); return; }
+    
+    axios.get(`${API_URL}/tags`, { 
+        headers: { Authorization: `Bearer ${token}` } 
+    }).then(res => {
+        setAvailableTags(res.data);
+    }).catch(err => console.error("Failed to load tags"));
+  }, [navigate]);
 
-  const handleSearchChange = (e) => setSearchQuery(e.target.value);
-  const handleSearchSubmit = (e) => {
-    e.preventDefault();
-    fetchRecipes(searchQuery, sortBy);
+  // 3. LIVE SEARCH EFFECT
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(() => {
+      // When searching/sorting changes, we usually want to reset to page 1
+      // But if the 'page' state itself changed, we want to fetch that specific page.
+      // To handle this simply: we fetch the current 'page' state.
+      // NOTE: You might want to reset setPage(1) if searchQuery changes, 
+      // but for now, let's just fetch.
+      fetchRecipes(searchQuery, sortBy, selectedTags, page);
+    }, 500);
+
+    return () => clearTimeout(delayDebounceFn);
+    
+  }, [searchQuery, sortBy, selectedTags, page, fetchRecipes]);
+
+  // Handlers
+  const handleSearchChange = (e) => {
+      setSearchQuery(e.target.value);
+      setPage(1); // Reset to page 1 on new search
   };
+  
   const handleSortChange = (e) => {
-    setSortBy(e.target.value);
-    fetchRecipes(searchQuery, e.target.value);
+      setSortBy(e.target.value);
+      setPage(1); // Reset to page 1 on new sort
+  };
+  
+  const handleTagsChange = (event, newValue) => {
+      setSelectedTags(newValue);
+      setPage(1); // Reset to page 1 on new filter
+  };
+
+  const handlePageChange = (event, value) => {
+      setPage(value);
+      window.scrollTo({ top: 0, behavior: 'smooth' }); // Scroll to top on page change
   };
 
   return (
@@ -67,41 +119,43 @@ const Recipes = () => {
         All Recipes
       </Typography>
 
-      <form onSubmit={handleSearchSubmit} style={{ marginBottom: '30px', display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
-        <TextField
-          label="Search Recipes"
-          variant="outlined"
-          value={searchQuery}
-          onChange={handleSearchChange}
-          sx={{ marginRight: 2, width: '250px', marginBottom: { xs: 2, sm: 0 } }}
-        />
-        <FormControl sx={{ minWidth: 220, marginRight: 2, marginBottom: { xs: 2, sm: 0 } }}>
-          <InputLabel>Sort by</InputLabel>
-          <Select value={sortBy} label="Sort by" onChange={handleSortChange}>
-            <MenuItem value="">Default</MenuItem>
-            <MenuItem value="recipe_name_asc">Name (A-Z)</MenuItem>
-            <MenuItem value="recipe_name_desc">Name (Z-A)</MenuItem>
-            <MenuItem value="cuisine_asc">Cuisine (A-Z)</MenuItem>
-            <MenuItem value="cuisine_desc">Cuisine (Z-A)</MenuItem>
-            <MenuItem value="total_time_asc">Time (Short-Long)</MenuItem>
-            <MenuItem value="total_time_desc">Time (Long-Short)</MenuItem>
-            <MenuItem value="difficulty_asc">Difficulty (Easy → Hard)</MenuItem>
-            <MenuItem value="difficulty_desc">Difficulty (Hard → Easy)</MenuItem>
-            <MenuItem value="servings_asc">Servings (Fewest First)</MenuItem>
-            <MenuItem value="servings_desc">Servings (Most First)</MenuItem>
-          </Select>
-        </FormControl>
-        <Button 
-          variant="contained" 
-          type="submit" 
-          sx={{ 
-            backgroundColor: '#D28415', 
-            '&:hover': { backgroundColor: '#b36b10' }
-          }}
-        >
-          Search
-        </Button>
-      </form>
+      {/* SEARCH & FILTER BAR */}
+      <Box sx={{ mb: 4 }}>
+        <Grid container spacing={2} alignItems="center">
+            <Grid size={{ xs: 12, md: 5 }}>
+                <TextField
+                  label="Search..."
+                  variant="outlined"
+                  fullWidth
+                  value={searchQuery}
+                  onChange={handleSearchChange}
+                  size="small"
+                  InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon color="action" /></InputAdornment>) }}
+                />
+            </Grid>
+            <Grid size={{ xs: 12, md: 5 }}>
+                <Autocomplete
+                    multiple
+                    options={availableTags}
+                    value={selectedTags}
+                    onChange={handleTagsChange}
+                    renderTags={(value, getTagProps) => value.map((option, index) => (<Chip variant="outlined" label={option} size="small" {...getTagProps({ index })} />))}
+                    renderInput={(params) => (<TextField {...params} variant="outlined" label="Filter by Tags" placeholder="Tags" size="small" />)}
+                />
+            </Grid>
+            <Grid size={{ xs: 6, md: 2 }}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Sort by</InputLabel>
+                  <Select value={sortBy} label="Sort by" onChange={handleSortChange}>
+                    <MenuItem value="">Newest</MenuItem>
+                    <MenuItem value="recipe_name_asc">A-Z</MenuItem>
+                    <MenuItem value="total_time_asc">Quickest</MenuItem>
+                    <MenuItem value="difficulty_asc">Difficulty (Easy → Hard)</MenuItem>
+                  </Select>
+                </FormControl>
+            </Grid>
+        </Grid>
+      </Box>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
@@ -110,15 +164,36 @@ const Recipes = () => {
           <CircularProgress />
         </Box>
       ) : (
-        // --- CHANGE IS HERE ---
-        // Changed spacing from 3 to 2 to bring cards closer
-        <Grid container spacing={2}>
-          {recipes && recipes.map((recipe, index) => (
-            <Grid size={{ xs: 12, sm: 6, md: 4 }} key={recipe?.id || index} sx={{ display: 'flex', justifyContent: 'center' }}>
-              <RecipeCard recipe={recipe} />
-            </Grid>
-          ))}
-        </Grid>
+        <>
+          <Grid container spacing={2}>
+            {recipes.length > 0 ? (
+              recipes.map((recipe, index) => (
+                  <Grid size={{ xs: 12, sm: 6, md: 3 }} key={recipe?.id || index} sx={{ display: 'flex', justifyContent: 'center' }}>
+                    <RecipeCard recipe={recipe} />
+                  </Grid>
+              ))
+            ) : (
+              <Grid size={{ xs: 12 }}>
+                  <Typography align="center" color="textSecondary" sx={{ mt: 4 }}>
+                      No recipes found matching your search.
+                  </Typography>
+              </Grid>
+            )}
+          </Grid>
+
+          {/* PAGINATION CONTROLS */}
+          {totalPages > 1 && (
+            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4, mb: 4 }}>
+                <Pagination 
+                    count={totalPages} 
+                    page={page} 
+                    onChange={handlePageChange} 
+                    color="primary" 
+                    size="large"
+                />
+            </Box>
+          )}
+        </>
       )}
     </Container>
   );

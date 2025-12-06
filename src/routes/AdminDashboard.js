@@ -1,18 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Container,
-  Typography,
-  Table,
-  TableHead,
-  TableRow,
-  TableCell,
-  TableBody,
-  Select,
-  MenuItem,
-  Button,
-  Paper,
-  Box,
+  Container, Typography, Table, TableHead, TableRow, TableCell, TableBody, Select, MenuItem, Button, Paper, Box
 } from '@mui/material';
 import { jwtDecode } from 'jwt-decode';
 
@@ -20,7 +9,6 @@ const API_URL = process.env.REACT_APP_API_URL;
 
 const AdminDashboard = () => {
   const [users, setUsers] = useState([]);
-  // 1. State to store the ID of the currently logged-in admin
   const [currentAdminId, setCurrentAdminId] = useState(null);
   const navigate = useNavigate();
 
@@ -30,14 +18,8 @@ const AdminDashboard = () => {
 
     try {
       const decoded = jwtDecode(token);
-      
-      // Security check: redirect if not admin
       if (decoded.role !== 'admin') return navigate('/recipes');
-
-      // 2. Save your own ID so we can prevent you from deleting yourself
-      // 'sub' is the standard JWT claim where Flask stores the User ID
       setCurrentAdminId(parseInt(decoded.sub));
-
       fetchUsers(token);
     } catch (error) {
       console.error("Invalid token", error);
@@ -51,8 +33,6 @@ const AdminDashboard = () => {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-  
-      // Filter out the system '[deleted]' user so it doesn't clutter the list
       const filtered = data.filter((user) => user.username !== '[deleted]');
       setUsers(filtered);
     } catch (err) {
@@ -65,10 +45,7 @@ const AdminDashboard = () => {
     try {
       const res = await fetch(`${API_URL}/admin/users/${id}/role`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ role: newRole }),
       });
       if (res.ok) {
@@ -90,7 +67,7 @@ const AdminDashboard = () => {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
-        fetchUsers(token); // Refresh list
+        fetchUsers(token);
       }
     } catch (err) {
       console.error('Failed to delete user:', err);
@@ -103,7 +80,7 @@ const AdminDashboard = () => {
         Admin Dashboard
       </Typography>
       <Paper elevation={3}>
-        <Box p={2}>
+        <Box p={2} sx={{ overflowX: 'auto' }}>
           <Table>
             <TableHead>
               <TableRow>
@@ -112,6 +89,7 @@ const AdminDashboard = () => {
                 <TableCell>Email</TableCell>
                 <TableCell>Role</TableCell>
                 <TableCell>Joined</TableCell>
+                <TableCell>Last Login</TableCell> {/* New Column Header */}
                 <TableCell>Recipes</TableCell>
                 <TableCell>Actions</TableCell>
               </TableRow>
@@ -127,7 +105,6 @@ const AdminDashboard = () => {
                       value={user.role || 'user'}
                       onChange={(e) => handleRoleChange(user.id, e.target.value)}
                       size="small"
-                      // 3. Only disable if this row is YOU
                       disabled={user.id === currentAdminId}
                     >
                       <MenuItem value="user">user</MenuItem>
@@ -139,6 +116,12 @@ const AdminDashboard = () => {
                       ? new Date(user.created_at).toLocaleDateString()
                       : '—'}
                   </TableCell>
+                  {/* New Column Data */}
+                  <TableCell>
+                    {user.last_login
+                      ? new Date(user.last_login).toLocaleString()
+                      : 'Never'}
+                  </TableCell>
                   <TableCell>{user.recipe_count}</TableCell>
                   <TableCell>
                     <Button
@@ -146,7 +129,6 @@ const AdminDashboard = () => {
                       color="error"
                       size="small"
                       onClick={() => handleDelete(user.id)}
-                      // 4. Only disable if this row is YOU
                       disabled={user.id === currentAdminId}
                     >
                       Delete

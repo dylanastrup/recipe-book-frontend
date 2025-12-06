@@ -52,16 +52,11 @@ const Profile = () => {
       .catch(() => setError("Failed to load user info."));
 
       // 2. Fetch User's Recipes
-      // Note: We might need to update the backend route to return full recipe data 
-      // if RecipeCard needs images/prep_time/etc. For now, we assume it does.
-      axios.get(`${API_URL}/recipes?search=`, { 
+      // We use the dedicated endpoint now, which returns an array of full recipe objects
+      axios.get(`${API_URL}/users/${userId}/recipes`, { 
         headers: { Authorization: `Bearer ${token}` } 
       }).then(res => {
-          // Filter to only show MY recipes locally if the API returns all
-          // Ideally, your backend /users/id/recipes route should return full objects
-          // But here is a fallback if you reuse the main search endpoint:
-          const myRecipes = res.data.filter(r => r.user_id === parseInt(userId));
-          setRecipes(myRecipes);
+          setRecipes(res.data);
       }).catch(() => setError("Failed to load recipes."));
       
     } catch (error) {
